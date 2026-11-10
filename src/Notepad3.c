@@ -3309,7 +3309,7 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     // Create Toolbar and Statusbar
     CreateBars(hwnd, hInstance);
 
-    Mirror the newly-created bar hwnds into this Instance
+    // Mirror the newly-created bar hwnds into this Instance
     Instance* pI2 = Instance_GetActive();
     if (pI2) {
         pI2->hwndEdit       = Globals.hwndEdit;
