@@ -2643,16 +2643,11 @@ HWND Notepad3_OpenNewWindowFromTab(HWND hwndSrcMain, int nSrcTabIndex)
 //
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
-    // Route all per-window reads/writes through the active Instance.
-    // Instance_SetActive() copies hwnds/state into Globals/Paths so legacy
-    // code keeps working without being rewritten.  Only do this after the
-    // Instance has been created (WM_CREATE sets it up via SetWindowLongPtr).
-    Instance* pI = Instance_FromHwnd(hwnd);
-    if (pI) {
-        Instance_SetActive(pI);
-    } else if (umsg == WM_CREATE) {
-        // WM_CREATE itself will create the Instance — don't assert here.
-    }
+    // TEMP DISABLED FOR DEBUG
+    // Instance* pI = Instance_FromHwnd(hwnd);
+    // if (pI) {
+    //     Instance_SetActive(pI);
+    // }
 
     switch(umsg) {
     case WM_CREATE:
@@ -3274,10 +3269,11 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     // (drag-to-split / drag-out-to-new-window support). SetActive pulls the
     // window's hwnds/state into Globals/Paths so the rest of MsgCreate keeps
     // working unchanged.
-    Instance* pI = Instance_Create(hwnd);
-    if (!pI) return -1LL;
-    Instance_SetActive(pI);
-    pI->hMainMenu = GetMenu(hwnd);
+    // TEMP DISABLED FOR DEBUG
+    //Instance* pI = Instance_Create(hwnd);
+    //if (!pI) return -1LL;
+    //Instance_SetActive(pI);
+    //pI->hMainMenu = GetMenu(hwnd);
 
     HINSTANCE const hInstance = ((LPCREATESTRUCT)lParam)->hInstance;
 
@@ -3314,18 +3310,18 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     // Create Toolbar and Statusbar
     CreateBars(hwnd, hInstance);
 
-    // Mirror the newly-created bar hwnds into this Instance
-    Instance* pI2 = Instance_GetActive();
-    if (pI2) {
-        pI2->hwndEdit       = Globals.hwndEdit;
-        pI2->hwndStatus     = Globals.hwndStatus;
-        pI2->hwndToolbar    = (HWND)Globals.hwndToolbar;
-        pI2->hwndRebar      = (HWND)Globals.hwndRebar;
-        pI2->hwndEditFrame  = s_hwndEditFrame;
-    }
+    // TEMP DISABLED FOR DEBUG
+    // Instance* pI2 = Instance_GetActive();
+    // if (pI2) {
+    //     pI2->hwndEdit       = Globals.hwndEdit;
+    //     pI2->hwndStatus     = Globals.hwndStatus;
+    //     pI2->hwndToolbar    = (HWND)Globals.hwndToolbar;
+    //     pI2->hwndRebar      = (HWND)Globals.hwndRebar;
+    //     pI2->hwndEditFrame  = s_hwndEditFrame;
+    // }
 
-    TabManager_Init(hwnd, hInstance);
-    TabManager_InstallDragSupport();
+    // TabManager_Init(hwnd, hInstance);
+    // TabManager_InstallDragSupport();
 
     // Window Initialization
 
