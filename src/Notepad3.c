@@ -3309,18 +3309,18 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     // Create Toolbar and Statusbar
     CreateBars(hwnd, hInstance);
 
-    // TEMP DISABLED FOR DEBUG
-    // Instance* pI2 = Instance_GetActive();
-    // if (pI2) {
-    //     pI2->hwndEdit       = Globals.hwndEdit;
-    //     pI2->hwndStatus     = Globals.hwndStatus;
-    //     pI2->hwndToolbar    = (HWND)Globals.hwndToolbar;
-    //     pI2->hwndRebar      = (HWND)Globals.hwndRebar;
-    //     pI2->hwndEditFrame  = s_hwndEditFrame;
-    // }
+    Mirror the newly-created bar hwnds into this Instance
+    Instance* pI2 = Instance_GetActive();
+    if (pI2) {
+        pI2->hwndEdit       = Globals.hwndEdit;
+        pI2->hwndStatus     = Globals.hwndStatus;
+        pI2->hwndToolbar    = (HWND)Globals.hwndToolbar;
+        pI2->hwndRebar      = (HWND)Globals.hwndRebar;
+        pI2->hwndEditFrame  = s_hwndEditFrame;
+    }
 
-    // TabManager_Init(hwnd, hInstance);
-    // TabManager_InstallDragSupport();
+    TabManager_Init(hwnd, hInstance);
+    TabManager_InstallDragSupport();
 
     // Window Initialization
 
