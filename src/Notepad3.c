@@ -2547,6 +2547,11 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 //
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
+    // Route all per-window reads/writes through the active Instance.
+    // Instance_SetActive() copies hwnds/state into Globals/Paths so legacy
+    // code keeps working without being rewritten.
+    Instance_SetActive(Instance_FromHwnd(hwnd));
+
     switch(umsg) {
     case WM_CREATE:
         return MsgCreate(hwnd, wParam, lParam);
@@ -3163,6 +3168,15 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     }
 #endif
 
+    // Create per-window Instance so this process can own several windows
+    // (drag-to-split / drag-out-to-new-window support). SetActive pulls the
+    // window's hwnds/state into Globals/Paths so the rest of MsgCreate keeps
+    // working unchanged.
+    Instance* pI = Instance_Create(hwnd);
+    if (!pI) return -1LL;
+    Instance_SetActive(pI);
+    pI->hMainMenu = GetMenu(hwnd);
+
     HINSTANCE const hInstance = ((LPCREATESTRUCT)lParam)->hInstance;
 
     // Setup edit control
@@ -3197,6 +3211,16 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
 
     // Create Toolbar and Statusbar
     CreateBars(hwnd, hInstance);
+
+    // Mirror the newly-created bar hwnds into this Instance
+    Instance* pI2 = Instance_GetActive();
+    if (pI2) {
+        pI2->hwndEdit       = Globals.hwndEdit;
+        pI2->hwndStatus     = Globals.hwndStatus;
+        pI2->hwndToolbar    = (HWND)Globals.hwndToolbar;
+        pI2->hwndRebar      = (HWND)Globals.hwndRebar;
+        pI2->hwndEditFrame  = s_hwndEditFrame;
+    }
 
     TabManager_Init(hwnd, hInstance);
     TabManager_InstallDragSupport();
@@ -3688,6 +3712,13 @@ LRESULT MsgEndSession(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 
     if (WM_DESTROY == umsg) {
         ClearWindowAppUserModelID(hwnd); // window properties must be removed before the window is closed
+
+        // Free the per-window Instance. If this was the last window, the
+        // instance list becomes empty and PostQuitMessage below exits the
+        // process as before.
+        Instance* pI = Instance_FromHwnd(hwnd);
+        Instance_Destroy(pI);
+
         if (IS_VALID_HANDLE(s_hEventAppIsClosing)) {
             CloseHandle(s_hEventAppIsClosing);
         }
