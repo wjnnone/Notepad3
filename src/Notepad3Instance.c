@@ -106,6 +106,9 @@ void I_SetCurrentFile(HPATHL h)
         if (i->hCurrentFile) Path_Release(i->hCurrentFile);
         i->hCurrentFile = h ? Path_Copy(h) : NULL;
         Path_Reset(Paths.CurrentFile, Path_Get(h));
+        // Also sync the current file vars into the Instance so that a future
+        // switch back to this window can restore them.
+        i->fvCurFile = Globals.fvCurFile;
     } else {
         Path_Reset(Paths.CurrentFile, Path_Get(h));
     }
@@ -115,15 +118,21 @@ void I_UpdateStateToGlobals(void)
 {
     Instance* i = Instance_GetActive();
     if (i) {
-        // Only sync WINDOW-LEVEL handles here.  File-level state (Paths.CurrentFile,
-        // Globals.fvCurFile) is managed separately via I_SetCurrentFile() — it
-        // would be catastrophic to overwrite them with the Instance's zero-
-        // initialized values during startup (before FileLoad runs) or at any
-        // point where the Instance hasn't been synced with the current file.
+        // Window-level handles: always sync (they are created by MsgCreate
+        // and guaranteed valid once an Instance exists).
         Globals.hwndMain   = i->hwndMain;
         Globals.hwndEdit   = i->hwndEdit;
         Globals.hwndStatus = i->hwndStatus;
         Globals.hwndToolbar= (HANDLE)i->hwndToolbar;
         Globals.hwndRebar  = (HANDLE)i->hwndRebar;
+
+        // File-level state: ONLY sync if this Instance has been given a valid
+        // file path.  If hCurrentFile is NULL (zero-initialized before any
+        // FileLoad), we must NOT overwrite whatever the current FileLoad has
+        // placed into Paths.CurrentFile / Globals.fvCurFile.
+        if (i->hCurrentFile) {
+            Path_Reset(Paths.CurrentFile, Path_Get(i->hCurrentFile));
+            Globals.fvCurFile = i->fvCurFile;
+        }
     }
 }
