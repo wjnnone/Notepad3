@@ -7,7 +7,6 @@
 #include "TypeDefs.h"
 #include "Notepad3.h"
 #include "Notepad3Instance.h"
-#include <shlobj_core.h>   // REFKNOWNFOLDERID
 #include "PathLib.h"
 
 // Global list of all instances, and a pointer to the one currently receiving

@@ -22,9 +22,13 @@
 #include "TypeDefs.h"
 #include "DynStrg.h"
 
-// REFKNOWNFOLDERID comes from shlobj_core.h — some .c files include PathLib.h
-// without having included <shlobj.h> first, so we pull it in here.
-#include <shlobj_core.h>
+// REFKNOWNFOLDERID is `typedef const GUID REFKNOWNFOLDERID;` in <shlobj_core.h>.
+// We define it here instead of pulling in shlobj_core.h (which leaks SORT_ASCENDING/
+// SORT_DESCENDING enums that clash with Edit.c's local SortOrderMask).  GUID is
+// already available from <windows.h> (via TypeDefs.h above).
+#ifndef REFKNOWNFOLDERID
+typedef const GUID REFKNOWNFOLDERID;
+#endif
 
 #define PTHAPI __stdcall
 

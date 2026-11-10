@@ -18,7 +18,6 @@
 #include <assert.h>
 #include <locale.h>
 #include <commctrl.h>
-#include <shlobj_core.h>   // REFKNOWNFOLDERID (for PathLib.h)
 #include <muiload.h>
 
 #include "PathLib.h"
