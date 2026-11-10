@@ -115,12 +115,15 @@ void I_UpdateStateToGlobals(void)
 {
     Instance* i = Instance_GetActive();
     if (i) {
-        Globals.hwndMain = i->hwndMain;
-        Globals.hwndEdit = i->hwndEdit;
+        // Only sync WINDOW-LEVEL handles here.  File-level state (Paths.CurrentFile,
+        // Globals.fvCurFile) is managed separately via I_SetCurrentFile() — it
+        // would be catastrophic to overwrite them with the Instance's zero-
+        // initialized values during startup (before FileLoad runs) or at any
+        // point where the Instance hasn't been synced with the current file.
+        Globals.hwndMain   = i->hwndMain;
+        Globals.hwndEdit   = i->hwndEdit;
         Globals.hwndStatus = i->hwndStatus;
-        Globals.hwndToolbar = (HANDLE)i->hwndToolbar;
-        Globals.hwndRebar = (HANDLE)i->hwndRebar;
-        Globals.fvCurFile = i->fvCurFile;
-        Path_Reset(Paths.CurrentFile, i->hCurrentFile ? Path_Get(i->hCurrentFile) : L"");
+        Globals.hwndToolbar= (HANDLE)i->hwndToolbar;
+        Globals.hwndRebar  = (HANDLE)i->hwndRebar;
     }
 }
