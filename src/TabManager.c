@@ -15,6 +15,7 @@
 #include "Notepad3Instance.h"
 #include "SciCall.h"
 #include "Helpers.h"
+#include <shlobj_core.h>   // REFKNOWNFOLDERID
 #include "PathLib.h"
 #include "Encoding.h"
 #include "Dialogs.h"
