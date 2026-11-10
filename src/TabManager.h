@@ -19,7 +19,18 @@
 extern "C" {
 #endif
 
-struct TabDoc;
+// TabDoc -- legacy public shim.  Per-Instance state lives in InstanceTab
+// (defined in Notepad3Instance.h), but Notepad3.c still expects a TabDoc*
+// pointer with the original member layout, so we keep a public definition
+// that matches InstanceTab field-for-field.
+struct TabDoc {
+    sptr_t      pDocPointer;
+    HPATHL      hFilePath;
+    bool        bModified;
+    FILEVARS    fvFileVars;
+    cpi_enc_t   iEncoding;
+    int         iEOLMode;
+};
 typedef struct TabDoc TabDoc;
 
 // Legacy global (kept because parts of Notepad3.c still read it)

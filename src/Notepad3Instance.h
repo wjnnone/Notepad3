@@ -84,20 +84,6 @@ void      Instance_SetActive(Instance* pI);
 // ---------------------------------------------------------------------------
 static __inline Instance* NP3_GetActive(void) { return Instance_GetActive(); }
 
-#define NP3_I  NP3_GetActive()   // convenience pointer to active Instance
-
-#define  I_hwndEdit      (I ? I->hwndEdit      : NULL)
-#define  I_hwndMain      (I ? I->hwndMain      : NULL)
-#define  I_hwndStatus    (I ? I->hwndStatus    : NULL)
-#define  I_hwndToolbar   (I ? I->hwndToolbar   : NULL)
-#define  I_hwndRebar     (I ? I->hwndRebar     : NULL)
-#define  I_hwndTab       (I ? I->hwndTabControl: NULL)
-#define  I_hwndEditFrame (I ? I->hwndEditFrame : NULL)
-
-#define  I_hCurrentFile  (I ? I->hCurrentFile  : NULL)
-#define  I_fvCurFile     (I ? I->fvCurFile     : *(FILEVARS*)NULL)
-#define  I_iEncoding     (I ? I->iEncoding     : 0)
-
 // Write helpers that also keep Paths.CurrentFile / Globals.fvCurFile in sync
 // for code paths that still read those globals directly.
 static __inline void I_SetCurrentFile(HPATHL h) {
