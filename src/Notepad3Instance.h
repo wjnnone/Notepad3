@@ -15,7 +15,10 @@
 
 #include "TypeDefs.h"
 #include "SciCall.h"
-#include "PathLib.h"
+
+// Note: PathLib.h is intentionally NOT included here.  Pulling it in early
+// (before some Windows SDK headers) breaks REFKNOWNFOLDERID parsing inside
+// PathLib.h itself.  Anything needing PathLib must include it explicitly.
 
 #ifdef __cplusplus
 extern "C" {
