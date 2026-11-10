@@ -22,10 +22,10 @@ extern "C" {
 #endif
 
 // Max instances per process (reasonable upper bound)
-#define MAX_INSTANCES 16
+enum { NP3_MAX_INSTANCES = 16 };
 
 // Max tabs per instance
-#define INSTANCE_MAX_TABS 64
+enum { NP3_INSTANCE_MAX_TABS = 64 };
 
 struct Instance;
 typedef struct Instance Instance;
@@ -59,7 +59,7 @@ struct Instance {
     int         iEOLMode;
 
     // Per-window tab manager
-    InstanceTab tabs[INSTANCE_MAX_TABS];
+    InstanceTab tabs[NP3_INSTANCE_MAX_TABS];
     int         nTabCount;
     InstanceTab* pActiveTab;
 

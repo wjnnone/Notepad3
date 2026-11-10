@@ -1,4 +1,4 @@
-// encoding: UTF-8
+﻿// encoding: UTF-8
 /******************************************************************************
 *                                                                             *
 * Notepad3                                                                    *
@@ -79,7 +79,7 @@ void TabManager_Init(HWND hwndMain, HINSTANCE hInstance)
     if (!pI) return;
 
     // Reset per-instance tab state
-    for (int i = 0; i < INSTANCE_MAX_TABS; i++) {
+    for (int i = 0; i < NP3_INSTANCE_MAX_TABS; i++) {
         pI->tabs[i].pDocPointer = 0;
         pI->tabs[i].hFilePath = NULL;
         pI->tabs[i].bModified = false;
@@ -188,7 +188,7 @@ void TabManager_RegisterInitialTab(HWND hwndMain)
     pTab->bModified = false;
     pTab->fvFileVars = pI->fvCurFile;
     pTab->iEncoding = Encoding_Current(-1);
-    pTab->iEOLMode = pI->fvFileVars.chMode[0] ? pI->fvFileVars.chMode[0] : Settings.DefaultEOLMode;
+    pTab->iEOLMode = pI->fvCurFile.chMode[0] ? pI->fvCurFile.chMode[0] : Settings.DefaultEOLMode;
 
     if (Path_IsNotEmpty(pI->hCurrentFile)) {
         pTab->hFilePath = Path_Copy(pI->hCurrentFile);
@@ -219,7 +219,7 @@ void TabManager_RegisterInitialTab(HWND hwndMain)
 TabDoc* TabManager_AddNewTab(HWND hwndMain)
 {
     Instance* pI = _GetI();
-    if (!pI || !pI->hwndEdit || !pI->hwndTabControl || pI->nTabCount >= INSTANCE_MAX_TABS) {
+    if (!pI || !pI->hwndEdit || !pI->hwndTabControl || pI->nTabCount >= NP3_INSTANCE_MAX_TABS) {
         return NULL;
     }
 
