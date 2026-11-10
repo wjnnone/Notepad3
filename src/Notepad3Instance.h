@@ -79,13 +79,12 @@ void      Instance_SetActive(Instance* pI);
 
 
 // ---------------------------------------------------------------------------
-// Convenience macros -- keep Notepad3.c code readable while routing
-// per-window lookups through the active instance.
-//
-// Use inside any message handler where MsgProc has already called
-// Instance_SetActive(Instance_FromHwnd(hwnd)).
+// Convenience accessors -- kept as inline functions to avoid preprocessor
+// collisions with local variables (e.g. Edit.c's `double I;`).
 // ---------------------------------------------------------------------------
-#define  I  (Instance_GetActive())
+static __inline Instance* NP3_GetActive(void) { return Instance_GetActive(); }
+
+#define NP3_I  NP3_GetActive()   // convenience pointer to active Instance
 
 #define  I_hwndEdit      (I ? I->hwndEdit      : NULL)
 #define  I_hwndMain      (I ? I->hwndMain      : NULL)

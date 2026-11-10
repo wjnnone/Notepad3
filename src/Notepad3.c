@@ -335,17 +335,10 @@ void SetSaveDone()
     s_NeedSavingForced = false;
     SetSavePoint();
 
-    // Multi-Tab: clear dirty flag + sync path/encoding to the active tab
-    if (g_pActiveTab) {
-        g_pActiveTab->bModified = false;
-        if (g_pActiveTab->hFilePath) {
-            Path_Release(g_pActiveTab->hFilePath);
-        }
-        g_pActiveTab->hFilePath = Path_IsNotEmpty(Paths.CurrentFile) ? Path_Copy(Paths.CurrentFile) : NULL;
-        g_pActiveTab->fvFileVars = Globals.fvCurFile;
-        g_pActiveTab->iEncoding = Encoding_Current(-1);
-        TabManager_UpdateActiveTabText();
-    }
+    // Multi-Tab: the active Instance's tab state is tracked internally;
+    // just refresh the current tab's path and clear its dirty flag.
+    TabManager_UpdateCurrentTabModified(false);
+    TabManager_SetCurrentTabPath(Paths.CurrentFile);
 }
 
 //==============================================================================
@@ -2544,6 +2537,109 @@ HWND InitInstance(const HINSTANCE hInstance, int nCmdShow)
 //  MainWndProc()
 //
 //  Messages are distributed to the MsgXXX-handlers
+//
+// ---------------------------------------------------------------------------
+// Notepad3_OpenNewWindowFromTab
+//
+// Drag-out-to-new-window (same-process).  Called from TabManager's drag
+// subclass when the user releases the mouse outside the tab strip.
+// Creates a fresh main window (WM_CREATE initialises its own Instance) and
+// moves the dragged tab's document into it.  The source Instance drops the
+// moved tab so no document is orphaned.
+// ---------------------------------------------------------------------------
+HWND Notepad3_OpenNewWindowFromTab(HWND hwndSrcMain, int nSrcTabIndex)
+{
+    if (!hwndSrcMain) return NULL;
+
+    Instance* pSrc = Instance_FromHwnd(hwndSrcMain);
+    if (!pSrc) return NULL;
+    if (nSrcTabIndex < 0 || nSrcTabIndex >= pSrc->nTabCount) return NULL;
+
+    InstanceTab const tSaved = pSrc->tabs[nSrcTabIndex];
+
+    DWORD const dwStyle = (WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN) & ~WS_VISIBLE;
+
+    RECT rcSrc;
+    GetWindowRect(hwndSrcMain, &rcSrc);
+    int const offset = 24;
+    int const cx = (rcSrc.right - rcSrc.left);
+    int const cy = (rcSrc.bottom - rcSrc.top);
+    int const x  = rcSrc.left + offset;
+    int const y  = rcSrc.top  + offset;
+
+    HWND hwndNew = CreateWindowEx(
+#if defined(_M_ARM64)
+        WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
+#else
+        WS_EX_ACCEPTFILES,
+#endif
+        s_wchWndClass,
+        _W(SAPPNAME),
+        dwStyle,
+        x, y, cx, cy,
+        NULL, NULL,
+        Globals.hInstance,
+        NULL);
+
+    if (!hwndNew) return NULL;
+
+    Instance* pDst = Instance_FromHwnd(hwndNew);
+    if (!pDst) {
+        for (int i = 0; i < 500 && !pDst; i++) { Sleep(10); pDst = Instance_FromHwnd(hwndNew); }
+    }
+    if (!pDst) { DestroyWindow(hwndNew); return NULL; }
+
+    // Replace the fresh empty doc (WM_CREATE gave pDst one) with our moved tab
+    if (pDst->tabs[0].pDocPointer && pDst->hwndEdit) SciCall_ReleaseDocument(pDst->tabs[0].pDocPointer);
+    if (pDst->tabs[0].hFilePath) Path_Release(pDst->tabs[0].hFilePath);
+
+    memcpy(&pDst->tabs[0], &tSaved, sizeof(InstanceTab));
+
+    pDst->pActiveTab = &pDst->tabs[0];
+    pDst->fvCurFile  = tSaved.fvFileVars;
+    pDst->iEncoding  = tSaved.iEncoding;
+
+    Instance_SetActive(pDst);
+    SendMessage(pDst->hwndEdit, SCI_SETDOCPOINTER, 0, (LPARAM)pDst->tabs[0].pDocPointer);
+
+    // Rebuild the tab strip item for the moved document
+    {
+        TCITEM tci = { 0 };
+        tci.mask = TCIF_TEXT | TCIF_PARAM;
+        WCHAR wch[256] = { 0 };
+        if (pDst->tabs[0].hFilePath && Path_IsNotEmpty(pDst->tabs[0].hFilePath)) {
+            const WCHAR* pName = Path_FindFileName(pDst->tabs[0].hFilePath);
+            StringCchPrintf(wch, COUNTOF(wch), L"%s%s",
+                            tSaved.bModified ? L"* " : L"", pName ? pName : L"Untitled");
+        } else {
+            StringCchPrintf(wch, COUNTOF(wch), L"%sUntitled 1", tSaved.bModified ? L"* " : L"");
+        }
+        tci.pszText = wch;
+        tci.cchTextMax = (int)COUNTOF(wch);
+        tci.lParam = (LPARAM)&pDst->tabs[0];
+        TabCtrl_SetItem(pDst->hwndTabControl, 0, &tci);
+        TabCtrl_SetCurSel(pDst->hwndTabControl, 0);
+    }
+
+    UpdateTitlebar(hwndNew);
+    UpdateStatusbar(true);
+    UpdateSaveSettingsCmds();
+
+    // Delete the moved tab from source
+    Instance_SetActive(pSrc);
+    TabManager_CloseTab(nSrcTabIndex);
+    Instance_SetActive(pSrc);
+
+    ShowWindow(hwndNew, SW_SHOW);
+    UpdateWindow(hwndNew);
+
+    return hwndNew;
+}
+
+
+//=============================================================================
+//
+//  MsgProc() - Main window procedure
 //
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
@@ -5468,10 +5564,8 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
         fLoadFlags |= Settings.SkipANSICodePageDetection ? FLF_SkipANSICPDetection : 0;
 
         // Multi-Tab: stash current tab state, then create a fresh tab
-        if (g_pActiveTab) {
-            g_pActiveTab->fvFileVars = Globals.fvCurFile;
-            g_pActiveTab->iEncoding = Encoding_Current(-1);
-        }
+        // (Instance_SetActive already routes through the Instance; no extra
+        // save needed because TabManager_SwitchToTab saves the outgoing tab's state.)
         TabDoc* pTab = TabManager_AddNewTab(Globals.hwndMain);
         int const nTabIdx = TabManager_GetActiveTabIndex();
 
@@ -5516,7 +5610,7 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
                 pTab->pDocPointer = pCurDoc;
             }
 
-            TabManager_UpdateTabText(nTabIdx);
+            TabManager_SetCurrentTabPath(Paths.CurrentFile);
         }
     } break;
 
@@ -5527,9 +5621,9 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
         fLoadFlags |= Settings.SkipUnicodeDetection ? FLF_SkipUnicodeDetect : 0;
         fLoadFlags |= Settings.SkipANSICodePageDetection ? FLF_SkipANSICPDetection : 0;
 
-        // Multi-Tab: keep current document; open the file in a new tab when
-        // the current one already has content
-        bool const bNewTab = (g_pActiveTab != NULL) &&
+        // Multi-Tab: open the file in a new tab when the current one already
+        // has content AND we already have at least one tab.
+        bool const bNewTab = (TabManager_GetCount() > 0) &&
                              (Path_IsNotEmpty(Paths.CurrentFile) || !Sci_IsDocEmpty()) &&
                              (TabManager_AddNewTab(Globals.hwndMain) != NULL);
 
@@ -9968,11 +10062,8 @@ inline static LRESULT _MsgNotifyLean(const SCNotification* const scn, bool* bMod
                 }
             }
             *bModified = true;
-            // Multi-Tab: mark active tab as modified
-            if (g_pActiveTab && !g_pActiveTab->bModified) {
-                g_pActiveTab->bModified = true;
-                TabManager_UpdateActiveTabText();
-            }
+            // Multi-Tab: mark active tab as modified (updates its "*" marker too)
+            TabManager_UpdateCurrentTabModified(true);
         }
         if (*bModified) {
             LONG64 const timeout = Settings2.UndoTransactionTimeout;

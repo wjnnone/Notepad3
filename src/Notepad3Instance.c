@@ -1,136 +1,94 @@
+// encoding: UTF-8
+/******************************************************************************
+* Notepad3Instance.c                                                          *
+*   Per-window Instance lifecycle + active-instance management.               *
+*******************************************************************************/
+
+#include "TypeDefs.h"
+#include "Notepad3.h"
+#include "Notepad3Instance.h"
+#include "PathLib.h"
+
+// Global list of all instances, and a pointer to the one currently receiving
+// window messages (MsgProc sets it at the top of each switch).
+static Instance* s_pAllInstances   = NULL;
+static Instance* s_pActiveInstance = NULL;
+
+
 // ---------------------------------------------------------------------------
-// Notepad3_OpenNewWindowFromTab
-//
-// Drag-out-to-new-window (same-process, NOT ShellExecute).
-// Creates a fresh main window, then moves the dragged tab's document from
-// the source Instance into the newly-created Instance.  The source Instance
-// drops the moved tab so no document is orphaned.
-//
-// Called from TabManager's drag-subclass when the user releases the mouse
-// outside the tab strip.
-// ---------------------------------------------------------------------------
-HWND Notepad3_OpenNewWindowFromTab(HWND hwndSrcMain, int nSrcTabIndex)
+Instance* Instance_Create(HWND hwndMain)
 {
-    if (!hwndSrcMain) return NULL;
+    Instance* pI = (Instance*)HeapAlloc(Globals.hndlProcessHeap, HEAP_ZERO_MEMORY, sizeof(Instance));
+    if (!pI) return NULL;
 
-    Instance* pSrc = Instance_FromHwnd(hwndSrcMain);
-    if (!pSrc) return NULL;
-    if (nSrcTabIndex < 0 || nSrcTabIndex >= pSrc->nTabCount) return NULL;
+    pI->hwndMain = hwndMain;
+    pI->pNext = s_pAllInstances;
+    s_pAllInstances = pI;
 
-    // Grab the tab we're about to move BEFORE creating the new window
-    // (CreateWindowEx sends WM_CREATE which sets the active Instance, and
-    // we must not confuse "which Instance holds which tab" during that call).
-    InstanceTab const tSaved = pSrc->tabs[nSrcTabIndex];
+    SetWindowLongPtr(hwndMain, GWLP_USERDATA, (LONG_PTR)pI);
+    return pI;
+}
 
-    // Create the new main window.  WM_CREATE will construct a new Instance
-    // and attach its own Scintilla / toolbar / statusbar / tab strip.
-    DWORD const dwStyle = (WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN) & ~WS_VISIBLE;
 
-    // Offset the new window slightly so it doesn't overlap the source
-    RECT rcSrc;
-    GetWindowRect(hwndSrcMain, &rcSrc);
-    int const offset = 24;
-    int const cx = (rcSrc.right - rcSrc.left);
-    int const cy = (rcSrc.bottom - rcSrc.top);
-    int const x  = rcSrc.left + offset;
-    int const y  = rcSrc.top  + offset;
+// ---------------------------------------------------------------------------
+void Instance_Destroy(Instance* pI)
+{
+    if (!pI) return;
 
-    HWND hwndNew = CreateWindowEx(
-#if defined(_M_ARM64)
-        WS_EX_ACCEPTFILES | WS_EX_COMPOSITED,
-#else
-        WS_EX_ACCEPTFILES,
-#endif
-        s_wchWndClass,
-        _W(SAPPNAME),
-        dwStyle,
-        x, y, cx, cy,
-        NULL, NULL,
-        Globals.hInstance,
-        NULL);
-
-    if (!hwndNew) return NULL;
-
-    Instance* pDst = Instance_FromHwnd(hwndNew);
-    if (!pDst) {
-        // Instance not yet attached -- give WM_CREATE a chance to run
-        for (int i = 0; i < 500 && !pDst; i++) {
-            Sleep(10);
-            pDst = Instance_FromHwnd(hwndNew);
+    // Close all owned tabs
+    for (int i = 0; i < pI->nTabCount; i++) {
+        InstanceTab* t = &pI->tabs[i];
+        if (t->pDocPointer && pI->hwndEdit) {
+            SciCall_ReleaseDocument(t->pDocPointer);
+        }
+        if (t->hFilePath) {
+            Path_Release(t->hFilePath);
         }
     }
-    if (!pDst) {
-        DestroyWindow(hwndNew);
-        return NULL;
+
+    if (pI->hCurrentFile) {
+        Path_Release(pI->hCurrentFile);
     }
 
-    // Now move the saved tab into the new Instance.
-    // pDst currently has one tab (its initial empty document registered
-    // by TabManager_RegisterInitialTab inside WM_CREATE).  We REPLACE
-    // it with our moved tab so the new window shows the dragged-out
-    // document directly instead of a "new empty" tab.
-
-    // 1. Release the fresh empty doc that WM_CREATE set up
-    if (pDst->tabs[0].pDocPointer && pDst->hwndEdit) {
-        SciCall_ReleaseDocument(pDst->tabs[0].pDocPointer);
-    }
-    if (pDst->tabs[0].hFilePath) {
-        Path_Release(pDst->tabs[0].hFilePath);
-    }
-
-    // 2. Copy the moved tab data into the new Instance's first slot
-    memcpy(&pDst->tabs[0], &tSaved, sizeof(InstanceTab));
-    // re-AddRef -- source Instance also held an AddRef; since we're
-    // deleting the source slot below we'll need one fresh AddRef for
-    // the new owner.  tSaved already has one AddRef from source, but
-    // we're about to release source's reference, so keep tSaved's
-    // AddRef and DON'T AddRef again here.
-
-    pDst->tabs[0].pDocPointer = tSaved.pDocPointer;   // owned (1 AddRef)
-
-    // 3. Activate the moved tab and wire up the doc pointer
-    pDst->pActiveTab = &pDst->tabs[0];
-    pDst->fvCurFile  = tSaved.fvFileVars;
-    pDst->iEncoding  = tSaved.iEncoding;
-
-    Instance_SetActive(pDst);
-    SendMessage(pDst->hwndEdit, SCI_SETDOCPOINTER, 0, (LPARAM)pDst->tabs[0].pDocPointer);
-
-    // 4. Tab strip rebuild (the current strip was built for an "Untitled"
-    //    document; replace with the moved tab's text)
-    {
-        TCITEM tci = { 0 };
-        tci.mask = TCIF_TEXT | TCIF_PARAM;
-        WCHAR wch[256] = { 0 };
-        if (pDst->tabs[0].hFilePath && Path_IsNotEmpty(pDst->tabs[0].hFilePath)) {
-            const WCHAR* pName = Path_FindFileName(pDst->tabs[0].hFilePath);
-            StringCchPrintf(wch, COUNTOF(wch), L"%s%s",
-                            tSaved.bModified ? L"* " : L"", pName ? pName : L"Untitled");
-        } else {
-            StringCchPrintf(wch, COUNTOF(wch), L"%sUntitled 1", tSaved.bModified ? L"* " : L"");
+    // Unlink from global list
+    if (s_pAllInstances == pI) {
+        s_pAllInstances = pI->pNext;
+    } else {
+        for (Instance* cur = s_pAllInstances; cur && cur->pNext; cur = cur->pNext) {
+            if (cur->pNext == pI) { cur->pNext = pI->pNext; break; }
         }
-        tci.pszText = wch;
-        tci.cchTextMax = (int)COUNTOF(wch);
-        tci.lParam = (LPARAM)&pDst->tabs[0];
-        TabCtrl_SetItem(pDst->hwndTabControl, 0, &tci);
-        TabCtrl_SetCurSel(pDst->hwndTabControl, 0);
+    }
+    if (s_pActiveInstance == pI) {
+        s_pActiveInstance = s_pAllInstances;
     }
 
-    // Update title bar / status bar to reflect the dragged-out document
-    UpdateTitlebar(hwndNew);
-    UpdateStatusbar(true);
-    UpdateSaveSettingsCmds();
+    if (pI->hwndMain) {
+        SetWindowLongPtr(pI->hwndMain, GWLP_USERDATA, 0);
+    }
 
-    // 5. Delete the moved tab from the source Instance
-    Instance_SetActive(pSrc);
-    TabManager_CloseTab(nSrcTabIndex);   // releases source's AddRef (we kept tSaved's one)
+    HeapFree(Globals.hndlProcessHeap, 0, pI);
+}
 
-    // 6. Restore active Instance to the source
-    Instance_SetActive(pSrc);
 
-    // Show the new window
-    ShowWindow(hwndNew, SW_SHOW);
-    UpdateWindow(hwndNew);
+// ---------------------------------------------------------------------------
+Instance* Instance_FromHwnd(HWND hwnd)
+{
+    if (!hwnd) return NULL;
+    LONG_PTR p = GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    return (Instance*)p;
+}
 
-    return hwndNew;
+
+// ---------------------------------------------------------------------------
+Instance* Instance_GetActive(void)
+{
+    return s_pActiveInstance;
+}
+
+
+// ---------------------------------------------------------------------------
+void Instance_SetActive(Instance* pI)
+{
+    s_pActiveInstance = pI;
+    I_UpdateStateToGlobals();
 }
