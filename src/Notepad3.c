@@ -2643,11 +2643,31 @@ HWND Notepad3_OpenNewWindowFromTab(HWND hwndSrcMain, int nSrcTabIndex)
 //
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
-    // TEMP DISABLED FOR DEBUG
-    // Instance* pI = Instance_FromHwnd(hwnd);
-    // if (pI) {
-    //     Instance_SetActive(pI);
-    // }
+    // Per-window Instance routing: every top-level window message that reaches
+    // MainWndProc belongs to exactly one Instance (GWLP_USERDATA was set by
+    // Instance_Create in WM_CREATE).  We use this to keep Globals in sync so
+    // the rest of the legacy code — which reads Globals.hwndEdit etc. — keeps
+    // working across multiple main windows.
+    Instance* pI = Instance_FromHwnd(hwnd);
+    if (pI) {
+        // Only set active on window-activation-style messages to avoid
+        // thrashing Globals during WM_CREATE (child windows aren't created
+        // yet) and to keep the active Instance stable during batch operations.
+        switch (umsg) {
+        case WM_ACTIVATEAPP:
+        case WM_SETFOCUS:
+        case WM_SIZE:
+        case WM_MOVE:
+            Instance_SetActive(pI);
+            break;
+        default:
+            // Make sure Globals stay in sync even for non-activation messages.
+            // This is safe because by now all child windows are created and
+            // their handles are mirrored into the Instance.
+            I_UpdateStateToGlobals();
+            break;
+        }
+    }
 
     switch(umsg) {
     case WM_CREATE:
@@ -3266,12 +3286,12 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
 #endif
 
     // Create per-window Instance so this process can own several windows
-    // (drag-to-split / drag-out-to-new-window support). SetActive pulls the
-    // window's hwnds/state into Globals/Paths so the rest of MsgCreate keeps
-    // working unchanged.
+    // (drag-to-split / drag-out-to-new-window support).  We deliberately do
+    // NOT call Instance_SetActive() here — at this point all the child windows
+    // are still NULL and calling SetActive would stamp NULL into Globals,
+    // which later CreateWindowEx calls rely on to chain their parent hwnds.
     Instance* pI = Instance_Create(hwnd);
     if (!pI) return -1LL;
-    Instance_SetActive(pI);
     pI->hMainMenu = GetMenu(hwnd);
 
     HINSTANCE const hInstance = ((LPCREATESTRUCT)lParam)->hInstance;
@@ -3309,8 +3329,11 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     // Create Toolbar and Statusbar
     CreateBars(hwnd, hInstance);
 
-    // Mirror the newly-created bar hwnds into this Instance
-    Instance* pI2 = Instance_GetActive();
+    // Mirror the newly-created bar hwnds into this Instance.
+    // Instance_Create() stored the Instance pointer in GWLP_USERDATA, so we
+    // can retrieve it without needing Instance_GetActive() (which isn't set
+    // yet — we do that on the next line, AFTER all Globals are correct).
+    Instance* pI2 = Instance_FromHwnd(hwnd);
     if (pI2) {
         pI2->hwndEdit       = Globals.hwndEdit;
         pI2->hwndStatus     = Globals.hwndStatus;
@@ -3319,8 +3342,21 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
         pI2->hwndEditFrame  = s_hwndEditFrame;
     }
 
+    // NOW set this Instance as active — all Globals are populated, so
+    // I_UpdateStateToGlobals() will write correct values.
+    Instance_SetActive(pI2);
+
+    // Create the tab control child window.  Must come AFTER SetActive so
+    // Instance_FromHwnd(hwndMain) inside TabManager_Init returns the right one.
     TabManager_Init(hwnd, hInstance);
-    TabManager_InstallDragSupport();
+
+    // Register the initial (Scintilla) document as tab #0.  Must come AFTER
+    // TabManager_Init so hwndTabControl is valid.
+    TabManager_RegisterInitialTab(hwnd);
+
+    // Attach the drag subclass (WM_LBUTTONDOWN/WM_MOUSEMOVE/WM_LBUTTONUP) to
+    // the tab control so drag-to-reorder and drag-to-new-window work.
+    TabManager_AttachDragSubclass();
 
     // Window Initialization
 
@@ -3961,11 +3997,15 @@ LRESULT MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam)
         cy -= (rc.bottom - rc.top);
     }
 
-    // Multi-Tab: reserve space for the tab bar above the editor
+    // Multi-Tab: reserve space for the tab bar above the editor.
+    // Read the tab control from THIS window's Instance — g_hwndTabControl is
+    // a legacy global that may be stale in a multi-window scenario.
     int nTabH = 0;
-    if (g_hwndTabControl && IsWindowVisible(g_hwndTabControl)) {
+    Instance* pI = Instance_FromHwnd(hwnd);
+    HWND hwndTab = pI ? pI->hwndTabControl : g_hwndTabControl;
+    if (hwndTab && IsWindowVisible(hwndTab)) {
         nTabH = 28;
-        SetWindowPos(g_hwndTabControl, NULL, x, y, cx, nTabH, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(hwndTab, NULL, x, y, cx, nTabH, SWP_NOZORDER | SWP_NOACTIVATE);
         y += nTabH;
         cy -= nTabH;
     }
