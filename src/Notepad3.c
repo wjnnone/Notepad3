@@ -2645,8 +2645,14 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
     // Route all per-window reads/writes through the active Instance.
     // Instance_SetActive() copies hwnds/state into Globals/Paths so legacy
-    // code keeps working without being rewritten.
-    Instance_SetActive(Instance_FromHwnd(hwnd));
+    // code keeps working without being rewritten.  Only do this after the
+    // Instance has been created (WM_CREATE sets it up via SetWindowLongPtr).
+    Instance* pI = Instance_FromHwnd(hwnd);
+    if (pI) {
+        Instance_SetActive(pI);
+    } else if (umsg == WM_CREATE) {
+        // WM_CREATE itself will create the Instance — don't assert here.
+    }
 
     switch(umsg) {
     case WM_CREATE:
