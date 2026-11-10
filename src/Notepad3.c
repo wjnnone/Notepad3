@@ -3269,11 +3269,10 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam,LPARAM lParam)
     // (drag-to-split / drag-out-to-new-window support). SetActive pulls the
     // window's hwnds/state into Globals/Paths so the rest of MsgCreate keeps
     // working unchanged.
-    // TEMP DISABLED FOR DEBUG
-    //Instance* pI = Instance_Create(hwnd);
-    //if (!pI) return -1LL;
-    //Instance_SetActive(pI);
-    //pI->hMainMenu = GetMenu(hwnd);
+    Instance* pI = Instance_Create(hwnd);
+    if (!pI) return -1LL;
+    Instance_SetActive(pI);
+    pI->hMainMenu = GetMenu(hwnd);
 
     HINSTANCE const hInstance = ((LPCREATESTRUCT)lParam)->hInstance;
 
