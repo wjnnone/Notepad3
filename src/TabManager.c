@@ -28,6 +28,10 @@
 #include "DarkMode/DarkMode.h"
 #endif
 
+// Legacy global (written by TabManager_Init so MsgSize can read it).
+// Kept because parts of Notepad3.c still reference g_hwndTabControl directly.
+HWND g_hwndTabControl = NULL;
+
 //=============================================================================
 // Per-Instance helpers -- all external TabManager_* calls read state from
 // the currently-active Instance (Instance_GetActive()).
