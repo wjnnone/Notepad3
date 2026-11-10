@@ -5474,6 +5474,17 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
             pTab->hFilePath = Path_IsNotEmpty(Paths.CurrentFile) ? Path_Copy(Paths.CurrentFile) : NULL;
             pTab->fvFileVars = Globals.fvCurFile;
             pTab->iEncoding = Encoding_Current(-1);
+
+            // FileLoad() calls EditSetNewText() which resets the Scintilla document.
+            // Re-attach the tab's own document so we don't operate on a dangling pointer.
+            sptr_t const pCurDoc = (sptr_t)SendMessage(Globals.hwndEdit, SCI_GETDOCPOINTER, 0, 0);
+            if (pCurDoc != pTab->pDocPointer) {
+                // release the fresh doc created by FileLoad, take ownership of current pointer
+                SciCall_AddRefDocument(pCurDoc);
+                SciCall_ReleaseDocument(pTab->pDocPointer);
+                pTab->pDocPointer = pCurDoc;
+            }
+
             TabManager_UpdateTabText(nTabIdx);
         }
     } break;
@@ -5501,6 +5512,15 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
                 pTab->hFilePath = Path_Copy(Paths.CurrentFile);
                 pTab->fvFileVars = Globals.fvCurFile;
                 pTab->iEncoding = Encoding_Current(-1);
+
+                // FileLoad() resets the Scintilla document; re-attach
+                sptr_t const pCurDoc = (sptr_t)SendMessage(Globals.hwndEdit, SCI_GETDOCPOINTER, 0, 0);
+                if (pCurDoc != pTab->pDocPointer) {
+                    SciCall_AddRefDocument(pCurDoc);
+                    SciCall_ReleaseDocument(pTab->pDocPointer);
+                    pTab->pDocPointer = pCurDoc;
+                }
+
                 TabManager_UpdateTabText(nTabIdx);
             }
         }
