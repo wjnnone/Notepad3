@@ -82,36 +82,14 @@ void      Instance_SetActive(Instance* pI);
 
 
 // ---------------------------------------------------------------------------
-// Convenience accessors -- kept as inline functions to avoid preprocessor
-// collisions with local variables (e.g. Edit.c's `double I;`).
+// Convenience accessors
 // ---------------------------------------------------------------------------
 static __inline Instance* NP3_GetActive(void) { return Instance_GetActive(); }
 
 // Write helpers that also keep Paths.CurrentFile / Globals.fvCurFile in sync
 // for code paths that still read those globals directly.
-static __inline void I_SetCurrentFile(HPATHL h) {
-    Instance* i = Instance_GetActive();
-    if (i) {
-        if (i->hCurrentFile) Path_Release(i->hCurrentFile);
-        i->hCurrentFile = h ? Path_Copy(h) : NULL;
-        Path_Reset(Paths.CurrentFile, Path_Get(h));  // keep global Paths in sync
-    } else {
-        Path_Reset(Paths.CurrentFile, Path_Get(h));
-    }
-}
-
-static __inline void I_UpdateStateToGlobals(void) {
-    Instance* i = Instance_GetActive();
-    if (i) {
-        Globals.hwndMain = i->hwndMain;
-        Globals.hwndEdit = i->hwndEdit;
-        Globals.hwndStatus = i->hwndStatus;
-        Globals.hwndToolbar = (HANDLE)i->hwndToolbar;
-        Globals.hwndRebar = (HANDLE)i->hwndRebar;
-        Globals.fvCurFile = i->fvCurFile;
-        Path_Reset(Paths.CurrentFile, i->hCurrentFile ? Path_Get(i->hCurrentFile) : L"");
-    }
-}
+void I_SetCurrentFile(HPATHL h);
+void I_UpdateStateToGlobals(void);
 
 
 #ifdef __cplusplus

@@ -92,3 +92,35 @@ void Instance_SetActive(Instance* pI)
     s_pActiveInstance = pI;
     I_UpdateStateToGlobals();
 }
+
+
+// ---------------------------------------------------------------------------
+// Convenience helpers (declared in Notepad3Instance.h).  Kept in the .c file
+// because they need PathLib.h and we deliberately don't pull that into the
+// header (it has to come after all Windows SDK headers).
+// ---------------------------------------------------------------------------
+void I_SetCurrentFile(HPATHL h)
+{
+    Instance* i = Instance_GetActive();
+    if (i) {
+        if (i->hCurrentFile) Path_Release(i->hCurrentFile);
+        i->hCurrentFile = h ? Path_Copy(h) : NULL;
+        Path_Reset(Paths.CurrentFile, Path_Get(h));
+    } else {
+        Path_Reset(Paths.CurrentFile, Path_Get(h));
+    }
+}
+
+void I_UpdateStateToGlobals(void)
+{
+    Instance* i = Instance_GetActive();
+    if (i) {
+        Globals.hwndMain = i->hwndMain;
+        Globals.hwndEdit = i->hwndEdit;
+        Globals.hwndStatus = i->hwndStatus;
+        Globals.hwndToolbar = (HANDLE)i->hwndToolbar;
+        Globals.hwndRebar = (HANDLE)i->hwndRebar;
+        Globals.fvCurFile = i->fvCurFile;
+        Path_Reset(Paths.CurrentFile, i->hCurrentFile ? Path_Get(i->hCurrentFile) : L"");
+    }
+}

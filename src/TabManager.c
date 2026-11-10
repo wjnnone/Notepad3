@@ -161,7 +161,7 @@ void TabManager_Cleanup(HWND hwndMain)
         pI->hwndTabControl = NULL;
     }
 
-    if (pI == (Instance*)GetInstanceFromHwnd(pI->hwndMain)) { /* no-op */ }
+    // Note: Instance_Destroy() handles unlinking + HeapFree.
 }
 
 

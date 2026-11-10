@@ -5567,7 +5567,7 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
         // (Instance_SetActive already routes through the Instance; no extra
         // save needed because TabManager_SwitchToTab saves the outgoing tab's state.)
         TabDoc* pTab = TabManager_AddNewTab(Globals.hwndMain);
-        int const nTabIdx = TabManager_GetActiveTabIndex();
+        // nTabIdx not needed — path updated via TabManager_SetCurrentTabPath below
 
         if (hsel && !isDir) {
             FileLoadFlags const fLoad = fLoadFlags & ~FLF_New;
@@ -5646,7 +5646,7 @@ static bool _HandleFileCommands(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lPar
                     pTab->pDocPointer = pCurDoc;
                 }
 
-                TabManager_UpdateTabText(nTabIdx);
+                TabManager_SetCurrentTabPath(Paths.CurrentFile);
             }
         }
         else if (bNewTab && Sci_IsDocEmpty()) {
