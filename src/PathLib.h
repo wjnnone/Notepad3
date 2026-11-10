@@ -22,6 +22,10 @@
 #include "TypeDefs.h"
 #include "DynStrg.h"
 
+// REFKNOWNFOLDERID comes from shlobj_core.h — some .c files include PathLib.h
+// without having included <shlobj.h> first, so we pull it in here.
+#include <shlobj_core.h>
+
 #define PTHAPI __stdcall
 
 // PATHCCH_MAX_CCH: (0x7FFF + 1 for NULL terminator)
