@@ -106,7 +106,10 @@ void TabManager_Init(HWND hwndMain, HINSTANCE hInstance)
         hInstance,
         NULL);
 
-    if (!pI->hwndTabControl) return;
+    if (!pI->hwndTabControl) {
+        OutputDebugStringA("[TabManager] ERROR: CreateWindowEx(WC_TABCONTROL) failed — tab features disabled for this window\n");
+        return;
+    }
 
     InitWindowCommon(pI->hwndTabControl, true);
 

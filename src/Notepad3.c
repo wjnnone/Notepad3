@@ -4410,11 +4410,15 @@ static LRESULT _OnDropOneFile(HWND hwnd, HPATHL hFilePath, WININFO* wi)
 //
 //  MsgDropFiles() - Handles WM_DROPFILES
 //
-//  Dirty current doc OR Ctrl held -> every file spawns a new NP3 instance
-//  (capped by Settings2.MaxFileDropInstances). Clean current doc -> first
-//  file loads in this window, remaining spawn. Sources under a Windows temp
-//  root are snapshotted synchronously before DragFinish so 7-Zip / Outlook /
-//  archiver temp-file deletion can't race the load.
+//  Multi-tab drop semantics (same window, new tabs):
+//    - 2nd+ file in a multi-file drop → always a new tab.
+//    - Dirty current doc → every file gets a new tab (protects unsaved work).
+//    - Clean empty current tab → first file loads here; more files → new tabs.
+//  Ctrl+drop → spawn a new NP3 instance per file (user explicitly wants new
+//  windows). Capped by Settings2.MaxFileDropInstances.
+//  Sources under a Windows temp root are snapshotted synchronously before
+//  DragFinish so 7-Zip / Outlook / archiver temp-file deletion can't race
+//  the load.
 //
 LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
 {
@@ -4427,7 +4431,10 @@ LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
     bool const vkCtrlDown = IsKeyDown(VK_CONTROL);
     bool const bDirty     = IsSaveNeeded();
-    bool const bForceNew  = vkCtrlDown || bDirty;
+    // Only Ctrl held forces a new process (user is explicit).
+    // A dirty document must stay in this window — but protected by opening
+    // each dropped file in a NEW TAB instead of overwriting the unsaved doc.
+    bool const bForceNew  = vkCtrlDown;
     UINT const cnt        = DragQueryFileW(hDrop, UINT_MAX, NULL, 0);
     if (cnt == 0) {
         DragFinish(hDrop);
@@ -4525,8 +4532,8 @@ LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
                                                              Paths.ModuleDirectory, true) == 0);
 
                 if (bForceNew) {
-                    // Ctrl held OR dirty doc → spawn a new NP3 instance (original behaviour).
-                    // Multi-tab does NOT override this — user is explicit.
+                    // Ctrl held → spawn a new NP3 instance (user explicitly wants a new window).
+                    // Dirty documents are handled by the multi-tab branch below (protected in-window).
                     if (spawned >= cap) {
                         if (!warned) {
                             InfoBoxLng(MB_ICONWARNING, Constants.SuppressKey.InfoDropCap,
