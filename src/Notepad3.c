@@ -4507,6 +4507,7 @@ LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
         if (!e->isOk) {
             InfoBoxLng(MB_ICONWARNING, NULL, IDS_MUI_DROP_NO_FILE);
         } else if (e->isDir) {
+            // Directory drop → open file dialog inside this window
             _OnDropOneFile(hwnd, e->eff, NULL);
         } else {
             // Honour SingleFileInstance: if the *original* path is already
@@ -4522,29 +4523,70 @@ LRESULT MsgDropFiles(HWND hwnd, WPARAM wParam, LPARAM lParam)
             } else {
                 bool const sameFile = (Path_StrgComparePath(e->eff, Paths.CurrentFile,
                                                              Paths.ModuleDirectory, true) == 0);
-                bool const spawnThis = bForceNew || (i > 0);
-                if (spawnThis) {
+
+                if (bForceNew) {
+                    // Ctrl held OR dirty doc → spawn a new NP3 instance (original behaviour).
+                    // Multi-tab does NOT override this — user is explicit.
                     if (spawned >= cap) {
                         if (!warned) {
                             InfoBoxLng(MB_ICONWARNING, Constants.SuppressKey.InfoDropCap,
                                        IDS_MUI_DROP_CAP_EXCEEDED, cap);
                             warned = true;
                         }
-                        // Over cap — snapshot orphan, register for sweep/drain.
                         _RegisterDropSnapshot(e->eff);
                     } else {
                         WININFO wi = GetMyWindowPlacement(hwnd, NULL,
                                                           offset * (spawned + 1), fullVis);
-                        // NB: don't register — the spawned child registers
-                        // its CLI-arg snapshot at startup and owns cleanup.
                         DialogNewWindow(hwnd, sameFile, e->eff, &wi);
                         spawned++;
                     }
                 } else {
-                    // In-process load — register before _OnDropOneFile so the
-                    // sweep below leaves it alone (it becomes Paths.CurrentFile).
+                    // Multi-tab drop semantics:
+                    //   i == 0 && !bDirty && current tab empty → load in current tab
+                    //   all other cases → new tab (same-window, no new process)
+                    FileLoadFlags fLoadFlags = FLF_None;
+                    fLoadFlags |= Settings.SkipUnicodeDetection ? FLF_SkipUnicodeDetect : 0;
+                    fLoadFlags |= Settings.SkipANSICodePageDetection ? FLF_SkipANSICPDetection : 0;
+
+                    bool const bUseNewTab =
+                        (i > 0) ||                                  // 2nd+ file always → new tab
+                        bDirty ||                                   // current doc dirty → protect it
+                        (TabManager_GetCount() > 0 &&               // existing tab has content → protect it
+                         (Path_IsNotEmpty(Paths.CurrentFile) || !Sci_IsDocEmpty()));
+
                     _RegisterDropSnapshot(e->eff);
-                    _OnDropOneFile(hwnd, e->eff, NULL);
+
+                    if (bUseNewTab) {
+                        TabDoc* pTab = TabManager_AddNewTab(Globals.hwndMain);
+                        if (pTab) {
+                            FileLoad(e->eff, fLoadFlags, 0, 0);
+
+                            // Sync the tab's state with what FileLoad just put into Globals.
+                            // Pattern matches IDM_FILE_NEW handler below.
+                            if (pTab->hFilePath) Path_Release(pTab->hFilePath);
+                            pTab->hFilePath = Path_IsNotEmpty(Paths.CurrentFile)
+                                              ? Path_Copy(Paths.CurrentFile) : NULL;
+                            pTab->fvFileVars = Globals.fvCurFile;
+                            pTab->iEncoding  = Encoding_Current(-1);
+
+                            // FileLoad calls EditSetNewText which creates a fresh doc.
+                            // Re-attach our tab's doc pointer so we don't dangle.
+                            sptr_t const pCurDoc = (sptr_t)SendMessage(
+                                Globals.hwndEdit, SCI_GETDOCPOINTER, 0, 0);
+                            if (pCurDoc != pTab->pDocPointer) {
+                                SciCall_AddRefDocument(pCurDoc);
+                                SciCall_ReleaseDocument(pTab->pDocPointer);
+                                pTab->pDocPointer = pCurDoc;
+                            }
+                            TabManager_SetCurrentTabPath(Paths.CurrentFile);
+                        } else {
+                            // TabManager not ready yet (pre-InitInstance edge) —
+                            // fall back to in-process load in current tab.
+                            _OnDropOneFile(hwnd, e->eff, NULL);
+                        }
+                    } else {
+                        _OnDropOneFile(hwnd, e->eff, NULL);
+                    }
                 }
             }
         }
@@ -13203,6 +13245,9 @@ bool FileSave(FileSaveFlags fSaveFlags)
     if (fSuccess) {
         AutoSaveStop();
         ResetFileObservationData(true);
+
+        // Sync Instance file state — Save As may have changed the path.
+        I_SetCurrentFile(Paths.CurrentFile);
     }
 
     UpdateToolbar();
