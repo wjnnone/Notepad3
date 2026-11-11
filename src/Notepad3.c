@@ -12508,6 +12508,8 @@ bool FileLoad(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocP
             ShowZoomCallTip();
         }
 
+        // Sync Instance file state — FLF_New means "no file yet", so empty it.
+        I_SetCurrentFile(NULL);
         return true;
     }
 
@@ -12765,6 +12767,11 @@ bool FileLoad(const HPATHL hfile_pth, const FileLoadFlags fLoadFlags, const DocP
     }
     UpdateToolbar_Now(Globals.hwndMain);
 
+    // Sync Instance file state so multi-window/multi-tab switch knows the
+    // correct file path for this document.
+    if (fSuccess) {
+        I_SetCurrentFile(hfile_pth);
+    }
     return fSuccess;
 }
 
